@@ -1,11 +1,12 @@
 /**
  * map3d.js – MapLibre GL JS setup, terrain, layers, camera.
+ * Google Maps-like light basemap with optional 3D terrain.
  */
 
 import { MAP_STYLE, TERRAIN, DEFAULT_VIEW, RISK_COLORS, FACILITY_COLORS, ROUTE_COLORS } from './config.js';
 
 let map = null;
-let terrainEnabled = true;
+let terrainEnabled = false; // Start flat (Google Maps-like)
 let terrainExaggeration = TERRAIN.exaggeration;
 
 /**
@@ -24,10 +25,10 @@ export function initMap(containerId) {
     hash: false,
   });
 
-  map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), 'top-right');
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), 'bottom-right');
 
   map.on('load', () => {
-    // Add terrain source
+    // Add terrain source (available but not enabled by default)
     map.addSource('terrain-dem', {
       type: 'raster-dem',
       tiles: [TERRAIN.url],
@@ -36,24 +37,7 @@ export function initMap(containerId) {
       maxzoom: TERRAIN.maxzoom,
     });
 
-    // Enable terrain
-    map.setTerrain({ source: 'terrain-dem', exaggeration: terrainExaggeration });
-
-    // Add hillshade
-    map.addLayer({
-      id: 'hillshade',
-      type: 'hillshade',
-      source: 'terrain-dem',
-      paint: {
-        'hillshade-shadow-color': '#000000',
-        'hillshade-highlight-color': '#ffffff',
-        'hillshade-accent-color': '#111513',
-        'hillshade-illumination-direction': 315,
-        'hillshade-exaggeration': 0.3,
-      },
-    }, getFirstLabelLayer());
-
-    console.log('Map initialized with 3D terrain');
+    console.log('Map initialized (Google Maps-like light basemap)');
   });
 
   return map;
@@ -93,10 +77,10 @@ export function toggleTerrain(enabled) {
   if (!map) return;
   if (enabled) {
     map.setTerrain({ source: 'terrain-dem', exaggeration: terrainExaggeration });
-    map.setPitch(DEFAULT_VIEW.pitch);
+    map.easeTo({ pitch: 45, duration: 800 });
   } else {
     map.setTerrain(null);
-    map.setPitch(0);
+    map.easeTo({ pitch: 0, duration: 800 });
   }
 }
 
@@ -118,8 +102,8 @@ export function resetView() {
   map.flyTo({
     center: DEFAULT_VIEW.center,
     zoom: DEFAULT_VIEW.zoom,
-    pitch: terrainEnabled ? DEFAULT_VIEW.pitch : 0,
-    bearing: DEFAULT_VIEW.bearing,
+    pitch: 0,
+    bearing: 0,
     duration: 1500,
   });
 }
@@ -132,7 +116,7 @@ export function flyToBbox(bbox, padding = 60) {
   map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], {
     padding,
     duration: 1500,
-    pitch: terrainEnabled ? 40 : 0,
+    pitch: 0,
   });
 }
 
@@ -144,7 +128,7 @@ export function flyToPoint(lat, lon, zoom = 13) {
   map.flyTo({
     center: [lon, lat],
     zoom,
-    pitch: terrainEnabled ? 45 : 0,
+    pitch: 0,
     duration: 1200,
   });
 }
@@ -179,8 +163,8 @@ export function setHazardLayer(canvas, bbox) {
     type: 'raster',
     source: 'hazard-source',
     paint: {
-      'raster-opacity': 0.65,
-      'raster-fade-duration': 200,
+      'raster-opacity': 0.55,
+      'raster-fade-duration': 300,
     },
   }, getFirstLabelLayer());
 }
@@ -209,7 +193,7 @@ export function addDistrictLayer(geojson) {
     data: geojson,
   });
 
-  // 3D columns
+  // 3D columns (subtle on light map)
   map.addLayer({
     id: 'districts-3d',
     type: 'fill-extrusion',
@@ -223,16 +207,16 @@ export function addDistrictLayer(geojson) {
         'moderate', RISK_COLORS.moderate,
         'high', RISK_COLORS.high,
         'very_high', RISK_COLORS.very_high,
-        '#555',
+        '#ccc',
       ],
       'fill-extrusion-height': [
-        '*', ['get', 'composite_risk'], 80000
+        '*', ['get', 'composite_risk'], 60000
       ],
       'fill-extrusion-base': 0,
       'fill-extrusion-opacity': [
         'interpolate', ['linear'], ['zoom'],
-        6, 0.8,
-        8, 0.3,
+        6, 0.6,
+        8, 0.2,
         9, 0,
       ],
     },
@@ -245,12 +229,12 @@ export function addDistrictLayer(geojson) {
     source: 'districts',
     maxzoom: 10,
     paint: {
-      'line-color': '#212925',
-      'line-width': 1,
+      'line-color': '#b0b0b0',
+      'line-width': 0.8,
       'line-opacity': [
         'interpolate', ['linear'], ['zoom'],
-        6, 0.8,
-        9, 0.2,
+        6, 0.6,
+        9, 0.1,
         10, 0,
       ],
     },
@@ -261,7 +245,6 @@ export function addDistrictLayer(geojson) {
  * Add facility markers.
  */
 export function addFacilityMarkers(hospitals, shelters) {
-  // Remove existing
   clearLayerIfExists('hospitals');
   clearLayerIfExists('shelters');
 
@@ -280,11 +263,11 @@ export function addFacilityMarkers(hospitals, shelters) {
       type: 'circle',
       source: 'hospitals',
       paint: {
-        'circle-radius': 6,
+        'circle-radius': 7,
         'circle-color': FACILITY_COLORS.hospital,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#0a0c0b',
-        'circle-opacity': 0.9,
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 0.95,
       },
     });
   }
@@ -304,11 +287,11 @@ export function addFacilityMarkers(hospitals, shelters) {
       type: 'circle',
       source: 'shelters',
       paint: {
-        'circle-radius': 5,
+        'circle-radius': 6,
         'circle-color': FACILITY_COLORS.shelter,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#0a0c0b',
-        'circle-opacity': 0.9,
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 0.95,
       },
     });
   }
@@ -318,7 +301,6 @@ export function addFacilityMarkers(hospitals, shelters) {
  * Draw routes on the map.
  */
 export function drawRoutes(safestCoords, shortestCoords) {
-  // Remove existing routes
   clearLayerIfExists('route-shortest');
   clearLayerIfExists('route-safest-glow');
   clearLayerIfExists('route-safest');
@@ -334,9 +316,9 @@ export function drawRoutes(safestCoords, shortestCoords) {
       source: 'route-shortest',
       paint: {
         'line-color': ROUTE_COLORS.shortest,
-        'line-width': 3,
-        'line-dasharray': [4, 3],
-        'line-opacity': 0.6,
+        'line-width': 4,
+        'line-dasharray': [6, 4],
+        'line-opacity': 0.5,
       },
     });
   }
@@ -354,9 +336,9 @@ export function drawRoutes(safestCoords, shortestCoords) {
       source: 'route-safest',
       paint: {
         'line-color': ROUTE_COLORS.safest,
-        'line-width': 10,
-        'line-blur': 8,
-        'line-opacity': 0.25,
+        'line-width': 14,
+        'line-blur': 10,
+        'line-opacity': 0.2,
       },
     });
 
@@ -367,7 +349,7 @@ export function drawRoutes(safestCoords, shortestCoords) {
       source: 'route-safest',
       paint: {
         'line-color': ROUTE_COLORS.safest,
-        'line-width': 4,
+        'line-width': 5,
         'line-opacity': 0.9,
       },
     });
@@ -403,23 +385,15 @@ function clearLayerIfExists(id) {
 }
 
 /**
- * Add a draggable start marker.
+ * Add a draggable start marker (Google Maps blue dot style).
  */
 export function addStartMarker(lat, lon, onDragEnd) {
-  // Remove existing
   if (window._startMarker) {
     window._startMarker.remove();
   }
 
   const el = document.createElement('div');
-  el.style.cssText = `
-    width: 20px; height: 20px;
-    background: #7dff9b;
-    border: 3px solid #0a0c0b;
-    border-radius: 50%;
-    box-shadow: 0 0 12px rgba(125,255,155,0.4);
-    cursor: grab;
-  `;
+  el.className = 'marker-start';
 
   const marker = new maplibregl.Marker({ element: el, draggable: true })
     .setLngLat([lon, lat])
@@ -440,25 +414,14 @@ export function addStartMarker(lat, lon, onDragEnd) {
 export function addDestMarker(lat, lon, name, type) {
   if (window._destMarker) window._destMarker.remove();
 
-  const color = type === 'hospital' ? FACILITY_COLORS.hospital : FACILITY_COLORS.shelter;
-
   const el = document.createElement('div');
-  el.style.cssText = `
-    width: 24px; height: 24px;
-    background: ${color};
-    border: 3px solid #0a0c0b;
-    border-radius: 4px;
-    box-shadow: 0 0 12px ${color}40;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: bold; color: #0a0c0b;
-  `;
-  el.textContent = type === 'hospital' ? '+' : '⌂';
+  el.className = `marker-dest marker-dest--${type || 'hospital'}`;
+  el.textContent = type === 'hospital' ? '🏥' : '🏛️';
 
   const marker = new maplibregl.Marker({ element: el })
     .setLngLat([lon, lat])
     .addTo(map);
 
-  // Popup
   const popup = new maplibregl.Popup({ offset: 15, closeButton: true })
     .setHTML(`<div class="district-popup__name">${name}</div><div class="district-popup__risk">${type}</div>`);
   marker.setPopup(popup);

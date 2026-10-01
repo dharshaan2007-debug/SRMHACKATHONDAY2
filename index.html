@@ -2,192 +2,520 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Multi-Hazard Risk Index &amp; Emergency Routing – Tamil Nadu</title>
-  <meta name="description" content="Interactive multi-hazard risk map with least-risk emergency routing to hospitals and shelters across Tamil Nadu. GeoImpathon 1.0.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>SafeRoute TN – Emergency Routing</title>
+  <meta name="description" content="Google Maps-style emergency routing. Select hazard, set origin & destination, get the safest route across Tamil Nadu.">
 
-  <!-- MapLibre GL JS (pinned) -->
+  <!-- MapLibre GL JS -->
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css">
   <script src="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js"></script>
 
-  <!-- App CSS -->
-  <link rel="stylesheet" href="assets/css/tokens.css">
-  <link rel="stylesheet" href="assets/css/base.css">
-  <link rel="stylesheet" href="assets/css/layout.css">
-  <link rel="stylesheet" href="assets/css/components.css">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand: #1a73e8;
+      --brand-dark: #1557b0;
+      --brand-bg: #e8f0fe;
+      --bg: #fff;
+      --surface: #fff;
+      --surface2: #f8f9fa;
+      --border: #dadce0;
+      --text: #202124;
+      --text2: #5f6368;
+      --text3: #80868b;
+      --risk-vl: #0d9f63;
+      --risk-l: #34a853;
+      --risk-m: #f9ab00;
+      --risk-h: #ea4335;
+      --risk-vh: #c5221f;
+      --route-safe: #1a73e8;
+      --route-alt: #9aa0a6;
+      --shadow1: 0 1px 3px rgba(60,64,67,.3),0 4px 8px rgba(60,64,67,.15);
+      --shadow2: 0 1px 2px rgba(60,64,67,.3),0 1px 3px 1px rgba(60,64,67,.15);
+      --r-sm: 8px;
+      --r-md: 12px;
+      --r-full: 9999px;
+      --font: 'Inter', 'Roboto', -apple-system, sans-serif;
+    }
+
+    html, body { height: 100%; overflow: hidden; font-family: var(--font); }
+
+    #map { position: fixed; inset: 0; z-index: 0; }
+
+    /* ── Loading ── */
+    #loading {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+      transition: opacity .4s ease;
+    }
+    #loading.out { opacity: 0; pointer-events: none; }
+    .load-logo {
+      width: 64px; height: 64px; border-radius: 16px;
+      background: var(--brand); display: flex; align-items: center; justify-content: center;
+      font-size: 32px; animation: loadpulse 1.4s ease-in-out infinite;
+    }
+    @keyframes loadpulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+    .load-text { font-size: 14px; color: var(--text2); font-weight: 500; }
+    .load-bar { width: 200px; height: 3px; background: #e8eaed; border-radius: 99px; overflow: hidden; }
+    .load-bar-fill { height: 100%; background: var(--brand); border-radius: 99px; transition: width .3s ease; }
+
+    /* ── Google Maps-style sidebar panel ── */
+    #sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0;
+      width: 408px; z-index: 100;
+      background: var(--surface);
+      box-shadow: var(--shadow1);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: transform .3s ease;
+    }
+    #sidebar.collapsed { transform: translateX(-380px); }
+
+    /* Sidebar header */
+    .sb-header {
+      padding: 16px 16px 0;
+      flex-shrink: 0;
+    }
+
+    .sb-logo {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 12px;
+    }
+    .sb-logo-icon {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: var(--brand); display: flex; align-items: center; justify-content: center;
+      font-size: 18px; color: #fff; font-weight: 700;
+    }
+    .sb-logo-text { font-size: 18px; font-weight: 600; color: var(--text); }
+    .sb-logo-sub { font-size: 11px; color: var(--text2); margin-top: -2px; }
+
+    /* Search inputs */
+    .sb-inputs { display: flex; flex-direction: column; gap: 6px; }
+
+    .sb-input-row {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2); border-radius: var(--r-sm);
+      padding: 8px 12px; border: 1.5px solid transparent;
+      transition: border-color .15s;
+    }
+    .sb-input-row:focus-within { border-color: var(--brand); background: #fff; }
+
+    .sb-input-dot {
+      width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+    }
+    .sb-input-dot--origin { background: var(--brand); }
+    .sb-input-dot--dest { background: var(--risk-h); }
+
+    .sb-input-row input {
+      flex: 1; font-size: 14px; color: var(--text); background: transparent;
+      border: none; outline: none; min-width: 0;
+    }
+    .sb-input-row input::placeholder { color: var(--text3); }
+
+    .sb-input-clear {
+      width: 24px; height: 24px; border-radius: 50%; border: none; background: none;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text3); cursor: pointer; flex-shrink: 0;
+      opacity: 0; transition: opacity .15s;
+    }
+    .sb-input-row:focus-within .sb-input-clear,
+    .sb-input-row.has-value .sb-input-clear { opacity: 1; }
+    .sb-input-clear:hover { background: #e8eaed; color: var(--text); }
+
+    .sb-swap {
+      align-self: flex-end; width: 32px; height: 32px; border-radius: 50%;
+      background: #fff; border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 16px; flex-shrink: 0;
+      transition: background .15s, box-shadow .15s;
+    }
+    .sb-swap:hover { background: var(--surface2); box-shadow: var(--shadow2); }
+
+    .sb-inputs-main { display: flex; gap: 8px; align-items: stretch; }
+    .sb-inputs-fields { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+
+    /* Hazard selector */
+    .sb-section { padding: 12px 16px; border-top: 1px solid var(--border); }
+    .sb-section-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+
+    .hazard-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hchip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: var(--r-full);
+      border: 1.5px solid var(--border); font-size: 13px; font-weight: 500;
+      cursor: pointer; background: #fff; color: var(--text2);
+      transition: all .15s ease;
+    }
+    .hchip:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-bg); }
+    .hchip.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .hchip-icon { font-size: 16px; }
+
+    /* Route options (dest type) */
+    .dest-chips { display: flex; gap: 6px; }
+    .dchip {
+      display: flex; align-items: center; gap: 5px;
+      padding: 6px 12px; border-radius: var(--r-full);
+      border: 1.5px solid var(--border); font-size: 12px; font-weight: 500;
+      cursor: pointer; background: #fff; color: var(--text2);
+      transition: all .15s ease;
+    }
+    .dchip.active { background: var(--brand-bg); color: var(--brand); border-color: var(--brand); font-weight: 600; }
+    .dchip:hover:not(.active) { border-color: var(--text3); }
+
+    /* Route result card */
+    #route-result {
+      flex: 1; overflow-y: auto;
+      display: none;
+    }
+    #route-result.visible { display: block; }
+
+    .route-card {
+      margin: 0 16px 12px;
+      border-radius: var(--r-md);
+      overflow: hidden;
+      border: 1.5px solid var(--border);
+      transition: border-color .15s;
+    }
+    .route-card:hover { border-color: #aaa; }
+    .route-card--active { border-color: var(--brand) !important; box-shadow: 0 0 0 2px rgba(26,115,232,.15); }
+
+    .route-card-header {
+      padding: 12px 14px 8px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .route-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: var(--r-full);
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .route-badge--safe { background: #e6f4ea; color: #137333; }
+    .route-badge--alt  { background: #f1f3f4; color: var(--text2); }
+
+    .route-dest-name { font-size: 15px; font-weight: 600; color: var(--text); padding: 0 14px 6px; }
+    .route-dest-type { font-size: 12px; color: var(--text2); padding: 0 14px 10px; }
+
+    .route-stats {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px; background: var(--border);
+      border-top: 1px solid var(--border);
+    }
+    .route-stat {
+      padding: 10px 14px; background: #fff;
+      display: flex; flex-direction: column;
+    }
+    .route-stat-val { font-size: 17px; font-weight: 700; color: var(--text); }
+    .route-stat-val.safe { color: #137333; }
+    .route-stat-val.danger { color: var(--risk-h); }
+    .route-stat-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+    /* Recommendation box */
+    .route-rec {
+      margin: 0 16px 12px;
+      padding: 12px 14px; border-radius: var(--r-sm);
+      background: #e6f4ea; border-left: 3px solid #137333;
+      font-size: 13px; color: #137333; line-height: 1.5;
+    }
+
+    /* Risk readout pill */
+    #risk-pill {
+      margin: 0 16px 12px;
+      padding: 10px 14px; border-radius: var(--r-md);
+      background: var(--surface2); border: 1px solid var(--border);
+      display: none;
+    }
+    #risk-pill.visible { display: block; }
+    .risk-pill-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+    .risk-pill-composite { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    .risk-pill-label { font-size: 12px; font-weight: 500; margin-bottom: 10px; }
+    .risk-mini-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .risk-mini-label { font-size: 11px; color: var(--text2); width: 68px; flex-shrink: 0; }
+    .risk-mini-track { flex: 1; height: 5px; background: #e8eaed; border-radius: 99px; overflow: hidden; }
+    .risk-mini-fill { height: 100%; border-radius: 99px; }
+    .risk-mini-val { font-size: 11px; font-weight: 500; color: var(--text); width: 32px; text-align: right; }
+
+    /* Sidebar toggle tab (arrow sticking out) */
+    #sb-toggle {
+      position: fixed; top: 50%; left: 408px; transform: translateY(-50%);
+      z-index: 101; width: 20px; height: 56px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: none; border-radius: 0 8px 8px 0;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 2px 0 4px rgba(0,0,0,.08);
+      transition: left .3s ease;
+      font-size: 12px; color: var(--text2);
+    }
+    #sidebar.collapsed + #sb-toggle { left: 28px; }
+
+    /* ── Floating map buttons (top-right) ── */
+    .map-fab-group {
+      position: fixed; top: 12px; right: 12px; z-index: 90;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .map-fab {
+      width: 42px; height: 42px; border-radius: var(--r-sm);
+      background: var(--surface); border: none;
+      box-shadow: var(--shadow2); display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 18px; color: var(--text2);
+      transition: background .15s, box-shadow .15s;
+    }
+    .map-fab:hover { background: var(--surface2); box-shadow: var(--shadow1); }
+    .map-fab.active { background: var(--brand-bg); color: var(--brand); }
+
+    /* Satellite toggle pill */
+    #sat-toggle {
+      position: fixed; bottom: 180px; right: 12px; z-index: 90;
+      background: var(--surface); border: none; border-radius: var(--r-sm);
+      box-shadow: var(--shadow1);
+      overflow: hidden; display: flex;
+      cursor: pointer;
+    }
+    .sat-btn {
+      padding: 8px 14px; font-size: 12px; font-weight: 500; color: var(--text2);
+      border: none; background: none; cursor: pointer; transition: background .15s;
+    }
+    .sat-btn.active { background: var(--brand); color: #fff; }
+
+    /* Legend */
+    #legend {
+      position: fixed; bottom: 24px; right: 12px; z-index: 80;
+      background: var(--surface); border-radius: var(--r-sm);
+      box-shadow: var(--shadow2); padding: 8px 12px;
+      display: none;
+    }
+    #legend.visible { display: block; }
+    .leg-title { font-size: 10px; font-weight: 600; color: var(--text2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px; }
+    .leg-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 11px; color: var(--text2); }
+    .leg-swatch { width: 14px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+    .leg-line { width: 20px; height: 3px; border-radius: 99px; flex-shrink: 0; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(10px);
+      z-index: 500;
+      background: rgba(32,33,36,.9); color: #fff;
+      padding: 12px 20px; border-radius: var(--r-full);
+      font-size: 13px; font-weight: 500;
+      display: flex; align-items: center; gap: 10px;
+      opacity: 0; pointer-events: none;
+      transition: opacity .25s, transform .25s;
+      max-width: min(500px, 90vw);
+      backdrop-filter: blur(8px);
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.error { background: rgba(197,34,31,.9); }
+    .toast-spinner {
+      width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff; border-radius: 50%;
+      animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* MapLibre overrides */
+    .maplibregl-popup-content {
+      font-family: var(--font) !important; padding: 10px 14px !important;
+      border-radius: var(--r-sm) !important; box-shadow: var(--shadow1) !important;
+      font-size: 13px !important;
+    }
+    .maplibregl-ctrl-group { border-radius: var(--r-sm) !important; overflow: hidden !important; box-shadow: var(--shadow2) !important; }
+    .maplibregl-ctrl-group button { width: 40px !important; height: 40px !important; }
+
+    /* Search results dropdown */
+    .search-dropdown {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: var(--surface); border-radius: var(--r-sm);
+      box-shadow: var(--shadow1); max-height: 280px; overflow-y: auto;
+      z-index: 200; display: none;
+    }
+    .search-dropdown.open { display: block; }
+    .search-drop-item {
+      padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+      font-size: 14px; color: var(--text); transition: background .12s;
+    }
+    .search-drop-item:hover { background: var(--surface2); }
+    .search-drop-icon { width: 18px; height: 18px; color: var(--text3); flex-shrink: 0; }
+
+    /* Instruction overlay (center map) */
+    #map-instruction {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 50; pointer-events: none;
+      background: rgba(0,0,0,.6); color: #fff;
+      padding: 12px 20px; border-radius: var(--r-full);
+      font-size: 14px; font-weight: 500;
+      opacity: 0; transition: opacity .3s;
+      backdrop-filter: blur(6px);
+    }
+    #map-instruction.show { opacity: 1; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
+    /* Marker styles */
+    .m-origin {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--brand); border: 3px solid #fff;
+      box-shadow: 0 2px 8px rgba(26,115,232,.4);
+      cursor: grab;
+    }
+    .m-dest {
+      width: 28px; height: 36px; position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .m-dest-pin {
+      width: 28px; height: 28px; border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid rgba(0,0,0,.15);
+    }
+    .m-dest-pin--hospital { background: var(--risk-h); }
+    .m-dest-pin--shelter  { background: var(--brand); }
+    .m-dest-pin span { transform: rotate(45deg); font-size: 12px; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      #sidebar { width: 100%; top: auto; bottom: 0; height: auto; max-height: 60vh; border-radius: 16px 16px 0 0; }
+      #sidebar.collapsed { transform: translateY(calc(100% - 60px)); }
+      #sb-toggle { display: none; }
+      .map-fab-group { top: 8px; right: 8px; }
+      #sat-toggle, #legend { bottom: calc(60vh + 10px); }
+    }
+  </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Top bar -->
-    <header class="topbar">
-      <div class="topbar__brand">
-        <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M9 1L2 6v7l7 4 7-4V6L9 1z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-          <path d="M9 5v8M5 7.5l4 2.5 4-2.5" stroke="currentColor" stroke-width="1.2"/>
-        </svg>
-        Hazard Router
+
+<!-- Loading -->
+<div id="loading">
+  <div class="load-logo">🛡️</div>
+  <div class="load-text" id="load-text">Initializing SafeRoute TN…</div>
+  <div class="load-bar"><div class="load-bar-fill" id="load-bar" style="width:10%"></div></div>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="sb-header">
+    <div class="sb-logo">
+      <div class="sb-logo-icon">S</div>
+      <div>
+        <div class="sb-logo-text">SafeRoute TN</div>
+        <div class="sb-logo-sub">Emergency Routing · Tamil Nadu</div>
       </div>
+    </div>
 
-      <div class="topbar__search">
-        <svg class="topbar__search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
-        </svg>
-        <input type="text" id="search-input" placeholder="Search a place in India" autocomplete="off" aria-label="Search location">
-        <div class="topbar__search-results" id="search-results"></div>
-      </div>
-
-      <div class="topbar__actions">
-        <button class="btn btn--small" id="btn-geolocate" title="Use my location">
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="8" cy="8" r="3"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/>
-          </svg>
-          Locate
-        </button>
-        <button class="btn btn--small" id="btn-methodology">Methodology</button>
-      </div>
-    </header>
-
-    <div class="main">
-      <!-- Side panel -->
-      <aside class="panel" id="panel">
-        <div class="panel__handle" aria-label="Toggle panel"></div>
-        <div class="panel__scroll">
-
-          <!-- Layers -->
-          <div class="panel__section">
-            <div class="panel__section-title">Layers</div>
-            <div id="layer-toggles"></div>
-            <div class="opacity-control" style="margin-top:var(--sp-2)">
-              <span>Opacity</span>
-              <input type="range" id="hazard-opacity" min="0" max="1" step="0.05" value="0.65">
-            </div>
+    <!-- Route inputs (Google Maps style) -->
+    <div class="sb-inputs">
+      <div class="sb-inputs-main">
+        <div class="sb-inputs-fields">
+          <!-- Origin -->
+          <div class="sb-input-row" id="origin-row" style="position:relative">
+            <div class="sb-input-dot sb-input-dot--origin"></div>
+            <input id="origin-input" type="text" placeholder="Your location" autocomplete="off">
+            <button class="sb-input-clear" id="origin-clear" title="Clear">✕</button>
+            <div class="search-dropdown" id="origin-dropdown"></div>
           </div>
-
-          <!-- Risk weights -->
-          <div class="panel__section">
-            <div class="panel__section-title">Risk weights (AHP)</div>
-            <div id="weight-sliders"></div>
-          </div>
-
-          <!-- Route controls -->
-          <div class="panel__section">
-            <div class="panel__section-title">Route</div>
-            <div class="dest-selector">
-              <button class="btn active" data-dest="either">Either</button>
-              <button class="btn" data-dest="hospital">Hospital</button>
-              <button class="btn" data-dest="shelter">Shelter</button>
-            </div>
-
-            <div class="slider-group">
-              <div class="slider-group__header">
-                <span class="slider-group__label">Risk aversion (λ)</span>
-                <span class="slider-group__value mono" id="lambda-val">3.0</span>
-              </div>
-              <input type="range" id="lambda-slider" min="0" max="10" step="0.5" value="3">
-            </div>
-
-            <label class="checkbox">
-              <input type="checkbox" id="avoid-very-high">
-              Avoid very-high-risk segments
-            </label>
-
-            <div id="risk-readout"></div>
-          </div>
-
-          <!-- Dashboard / Summary -->
-          <div class="panel__section">
-            <div class="panel__section-title">Summary</div>
-            <div id="dashboard-content">
-              <p class="loading-text">Loading district data</p>
-            </div>
-          </div>
-
-          <!-- Map controls -->
-          <div class="panel__section">
-            <div class="panel__section-title">Map</div>
-            <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">
-              <button class="btn btn--small active" id="btn-3d">3D</button>
-              <button class="btn btn--small" id="btn-reset-view">Reset view</button>
-            </div>
-            <div class="slider-group" style="margin-top:var(--sp-2)">
-              <div class="slider-group__header">
-                <span class="slider-group__label">Terrain exaggeration</span>
-              </div>
-              <input type="range" id="terrain-exag" min="0" max="3" step="0.1" value="1.4">
-            </div>
-          </div>
-
-          <!-- Legend -->
-          <div class="panel__section">
-            <div class="panel__section-title">Legend</div>
-            <div class="risk-legend">
-              <div class="risk-legend__bar" style="background:#16403a"></div>
-              <div class="risk-legend__bar" style="background:#2f7d5b"></div>
-              <div class="risk-legend__bar" style="background:#c8b44a"></div>
-              <div class="risk-legend__bar" style="background:#e8833a"></div>
-              <div class="risk-legend__bar" style="background:#e5484d"></div>
-            </div>
-            <div class="risk-legend__labels">
-              <span>Very low</span>
-              <span>Low</span>
-              <span>Moderate</span>
-              <span>High</span>
-              <span>Very high</span>
-            </div>
-            <div style="margin-top:var(--sp-3);font-size:11px;color:var(--text-dim)">
-              <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:4px">
-                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5eead4;border:1.5px solid #0a0c0b"></span>
-                Hospital
-              </div>
-              <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:4px">
-                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#8ab4ff;border:1.5px solid #0a0c0b"></span>
-                Shelter
-              </div>
-              <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:4px">
-                <span style="display:inline-block;width:10px;height:3px;background:#7dff9b;border-radius:1px"></span>
-                Least-risk route
-              </div>
-              <div style="display:flex;align-items:center;gap:var(--sp-2)">
-                <span style="display:inline-block;width:10px;height:3px;background:#9aa7a0;border-radius:1px;border-top:1px dashed #9aa7a0"></span>
-                Shortest route
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </aside>
-
-      <!-- Map -->
-      <div class="map-container">
-        <div id="map"></div>
-
-        <!-- Status bar -->
-        <div class="statusbar" id="statusbar">
-          <span class="statusbar__text"></span>
-          <div class="statusbar__progress">
-            <div class="statusbar__progress-bar"></div>
+          <!-- Destination -->
+          <div class="sb-input-row" id="dest-row" style="position:relative">
+            <div class="sb-input-dot sb-input-dot--dest"></div>
+            <input id="dest-input" type="text" placeholder="Choose destination or tap map…" autocomplete="off">
+            <button class="sb-input-clear" id="dest-clear" title="Clear">✕</button>
+            <div class="search-dropdown" id="dest-dropdown"></div>
           </div>
         </div>
-
-        <!-- Route comparison card -->
-        <div class="route-card" id="route-card"></div>
+        <button class="sb-swap" id="btn-swap" title="Swap origin & destination">⇅</button>
       </div>
     </div>
   </div>
 
-  <!-- Methodology drawer -->
-  <div class="methodology__overlay" id="methodology-overlay"></div>
-  <div class="methodology" id="methodology-drawer">
-    <button class="btn btn--icon methodology__close" id="methodology-close" aria-label="Close methodology">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-    </button>
-    <div class="methodology__content" id="methodology-content">
-      <h2>Methodology</h2>
-      <p class="loading-text">Loading data sources and methodology</p>
+  <!-- Hazard -->
+  <div class="sb-section">
+    <div class="sb-section-title">Active Hazard</div>
+    <div class="hazard-chips" id="hazard-chips">
+      <div class="hchip active" data-hazard="composite"><span class="hchip-icon">⚠️</span>All</div>
+      <div class="hchip" data-hazard="flood"><span class="hchip-icon">🌊</span>Flood</div>
+      <div class="hchip" data-hazard="landslide"><span class="hchip-icon">⛰️</span>Landslide</div>
+      <div class="hchip" data-hazard="slope"><span class="hchip-icon">📐</span>Slope</div>
     </div>
   </div>
 
-  <!-- App script (ES module) -->
-  <script type="module" src="assets/js/main.js"></script>
+  <!-- Route to -->
+  <div class="sb-section">
+    <div class="sb-section-title">Route To (if no destination)</div>
+    <div class="dest-chips" id="dest-chips">
+      <div class="dchip active" data-dest="either">🏥🏛 Nearest</div>
+      <div class="dchip" data-dest="hospital">🏥 Hospital</div>
+      <div class="dchip" data-dest="shelter">🏛 Shelter</div>
+    </div>
+  </div>
+
+  <!-- Risk readout -->
+  <div class="sb-section" id="risk-pill" style="display:none">
+    <div class="risk-pill-title">📍 Location Risk</div>
+    <div class="risk-pill-composite" id="rp-composite"></div>
+    <div class="risk-pill-label" id="rp-label"></div>
+    <div id="rp-bars"></div>
+  </div>
+
+  <!-- Route result -->
+  <div id="route-result">
+    <div id="route-cards-container"></div>
+  </div>
+
+</div>
+
+<!-- Sidebar toggle tab -->
+<div id="sb-toggle">›</div>
+
+<!-- Floating map buttons (top-right) -->
+<div class="map-fab-group">
+  <button class="map-fab" id="btn-gps" title="Go to my location">📍</button>
+  <button class="map-fab" id="btn-info" title="Methodology">ℹ️</button>
+</div>
+
+<!-- Satellite toggle -->
+<div id="sat-toggle">
+  <button class="sat-btn active" id="btn-street">Map</button>
+  <button class="sat-btn" id="btn-sat">Satellite</button>
+</div>
+
+<!-- Legend -->
+<div id="legend">
+  <div class="leg-title">Risk Level</div>
+  <div class="leg-row"><div class="leg-swatch" style="background:var(--risk-vl)"></div>Very Low</div>
+  <div class="leg-row"><div class="leg-swatch" style="background:var(--risk-l)"></div>Low</div>
+  <div class="leg-row"><div class="leg-swatch" style="background:var(--risk-m)"></div>Moderate</div>
+  <div class="leg-row"><div class="leg-swatch" style="background:var(--risk-h)"></div>High</div>
+  <div class="leg-row"><div class="leg-swatch" style="background:var(--risk-vh)"></div>Very High</div>
+  <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border)">
+    <div class="leg-row"><div class="leg-line" style="background:var(--route-safe)"></div>Safest route</div>
+    <div class="leg-row"><div class="leg-line" style="background:var(--route-alt); opacity:.5"></div>Alternative</div>
+    <div class="leg-row"><span style="font-size:12px">🏥</span>Hospital</div>
+    <div class="leg-row"><span style="font-size:12px">🏛</span>Shelter</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"><div class="toast-spinner" id="t-spin"></div><span id="t-msg">Loading…</span></div>
+
+<!-- Map instruction -->
+<div id="map-instruction" id="map-instruction">📍 Click on map to set destination</div>
+
+<!-- Methodology drawer (minimal) -->
+<div id="meth-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:600;" onclick="closeMeth()"></div>
+<div id="meth-drawer" style="display:none;position:fixed;top:0;right:0;bottom:0;width:min(520px,90vw);background:#fff;z-index:601;overflow-y:auto;padding:24px;box-shadow:var(--shadow1)">
+  <button onclick="closeMeth()" style="position:absolute;top:16px;right:16px;font-size:20px;background:none;border:none;cursor:pointer;color:var(--text2)">✕</button>
+  <h2 style="font-size:20px;font-weight:600;margin-bottom:16px">Methodology</h2>
+  <div id="meth-content"></div>
+</div>
+
+<script type="module" src="assets/js/app.js"></script>
 </body>
 </html>

@@ -10,41 +10,42 @@ export const CDN = {
   },
 };
 
-export const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+// Light basemap (Google Maps-like)
+export const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
 export const TERRAIN = {
   url: 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
   encoding: 'terrarium',
-  exaggeration: 1.4,
+  exaggeration: 1.2,
   maxzoom: 15,
 };
 
 export const DEFAULT_VIEW = {
   center: [78.6, 11.0],   // Tamil Nadu center
-  zoom: 6.8,
-  pitch: 40,
-  bearing: -12,
+  zoom: 7.2,
+  pitch: 0,
+  bearing: 0,
 };
 
 export const RISK_COLORS = {
-  very_low:  '#16403a',
-  low:       '#2f7d5b',
-  moderate:  '#c8b44a',
-  high:      '#e8833a',
-  very_high: '#e5484d',
+  very_low:  '#0d904f',
+  low:       '#34a853',
+  moderate:  '#f9ab00',
+  high:      '#ea8600',
+  very_high: '#d93025',
 };
 
 export const RISK_THRESHOLDS = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
 export const RISK_LABELS = ['Very low', 'Low', 'Moderate', 'High', 'Very high'];
 
 export const FACILITY_COLORS = {
-  hospital: '#5eead4',
-  shelter:  '#8ab4ff',
+  hospital: '#d93025',
+  shelter:  '#1a73e8',
 };
 
 export const ROUTE_COLORS = {
-  shortest: '#9aa7a0',
-  safest:   '#7dff9b',
+  shortest: '#9aa0a6',
+  safest:   '#0d904f',
 };
 
 // Overpass API mirrors

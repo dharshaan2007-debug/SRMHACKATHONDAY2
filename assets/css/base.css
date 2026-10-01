@@ -1,87 +1,79 @@
-/* ── Base Reset & Typography ─────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+/**
+ * Base styles – resets, typography, global elements
+ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap');
 
 *, *::before, *::after {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
 
 html, body {
   height: 100%;
   overflow: hidden;
-  font-family: var(--font-ui);
-  font-size: var(--font-size);
-  line-height: var(--line-height);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: 'tnum' 1;
 }
 
-a {
-  color: var(--accent);
-  text-decoration: none;
-}
+a { color: var(--brand); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-button {
+button, input, select, textarea {
   font-family: inherit;
   font-size: inherit;
-  cursor: pointer;
+  color: inherit;
   border: none;
-  background: none;
-  color: inherit;
-}
-
-input, select {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--sp-1) var(--sp-2);
   outline: none;
-  transition: border-color var(--duration) var(--ease-out);
+  background: none;
 }
 
-input:focus, select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-glow);
-}
+button { cursor: pointer; }
 
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+img { max-width: 100%; display: block; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-full);
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-dim);
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* Selection */
+::selection {
+  background: var(--brand-bg);
+  color: var(--text);
 }
 
-/* Focus visible */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* MapLibre overrides */
+.maplibregl-popup-content {
+  padding: var(--sp-3) var(--sp-4) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow-md) !important;
+  font-family: var(--font) !important;
+  font-size: 13px !important;
 }
 
-/* Reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
+.maplibregl-popup-close-button {
+  font-size: 18px !important;
+  color: var(--text-secondary) !important;
+  padding: 2px 6px !important;
 }
 
-/* Mono numbers */
-.mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+.maplibregl-ctrl-group {
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow-sm) !important;
+  overflow: hidden !important;
+}
+
+.maplibregl-ctrl-group button {
+  width: 40px !important;
+  height: 40px !important;
 }
