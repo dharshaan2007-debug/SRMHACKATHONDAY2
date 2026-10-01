@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+*.json.credentials
+credentials/
+*.tif
+*.tmp
+pipeline/tmp/
+pipeline/tiles/
+.DS_Store
+Thumbs.db
+node_modules/

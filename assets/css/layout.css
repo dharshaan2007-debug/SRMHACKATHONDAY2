@@ -1,0 +1,319 @@
+/* ── Layout ──────────────────────────────────────────── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  height: var(--topbar-height);
+  padding: 0 var(--sp-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-low);
+  z-index: 100;
+  flex-shrink: 0;
+  gap: var(--sp-3);
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.topbar__brand svg {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.topbar__search {
+  flex: 1;
+  max-width: 340px;
+  position: relative;
+}
+
+.topbar__search input {
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-8);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.topbar__search-icon {
+  position: absolute;
+  left: var(--sp-2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.topbar__search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 200;
+  display: none;
+}
+
+.topbar__search-results.active {
+  display: block;
+}
+
+.search-result {
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--duration) var(--ease-out);
+}
+.search-result:last-child { border-bottom: none; }
+.search-result:hover { background: var(--accent-bg); }
+.search-result__name { color: var(--text); }
+.search-result__detail { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+
+/* Main content area */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Side panel */
+.panel {
+  width: var(--panel-width);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 50;
+  flex-shrink: 0;
+}
+
+.panel__scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--sp-3);
+}
+
+.panel__section {
+  margin-bottom: var(--sp-4);
+}
+
+.panel__section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: var(--sp-2);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Map container */
+.map-container {
+  flex: 1;
+  position: relative;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+/* Map controls overlay */
+.map-controls {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  z-index: 10;
+}
+
+/* Status bar */
+.statusbar {
+  position: absolute;
+  bottom: var(--sp-3);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: 11px;
+  color: var(--text-muted);
+  box-shadow: var(--shadow-card);
+  z-index: 10;
+  display: none;
+  max-width: 500px;
+  text-align: center;
+}
+
+.statusbar.active {
+  display: block;
+}
+
+.statusbar__progress {
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+  margin-top: var(--sp-1);
+  overflow: hidden;
+}
+
+.statusbar__progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1px;
+  transition: width 0.3s var(--ease-out);
+  width: 0%;
+}
+
+/* Route comparison card */
+.route-card {
+  position: absolute;
+  bottom: var(--sp-3);
+  right: var(--sp-3);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card), var(--highlight);
+  padding: var(--sp-3);
+  z-index: 10;
+  width: 300px;
+  display: none;
+}
+
+.route-card.active {
+  display: block;
+}
+
+/* Methodology drawer */
+.methodology {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(520px, 90vw);
+  height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-high);
+  z-index: 500;
+  transform: translateX(100%);
+  transition: transform var(--duration-slow) var(--ease-out);
+  overflow-y: auto;
+}
+
+.methodology.open {
+  transform: translateX(0);
+}
+
+.methodology__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 499;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+.methodology__overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.methodology__content {
+  padding: var(--sp-6);
+}
+
+.methodology__close {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+}
+
+/* ── Mobile ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    max-height: 55vh;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    z-index: 60;
+    transform: translateY(calc(100% - 40px));
+    transition: transform var(--duration-slow) var(--ease-out);
+  }
+
+  .panel.expanded {
+    transform: translateY(0);
+  }
+
+  .panel__handle {
+    display: flex;
+    justify-content: center;
+    padding: var(--sp-2) 0;
+    cursor: pointer;
+  }
+
+  .panel__handle::after {
+    content: '';
+    width: 32px;
+    height: 4px;
+    background: var(--border-light);
+    border-radius: 2px;
+  }
+
+  .topbar__search {
+    max-width: 200px;
+  }
+
+  .route-card {
+    right: var(--sp-2);
+    bottom: 56px;
+    width: calc(100vw - var(--sp-4));
+    max-width: 340px;
+  }
+}

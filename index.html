@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Hazard Risk Index &amp; Emergency Routing – Tamil Nadu</title>
+  <meta name="description" content="Interactive multi-hazard risk map with least-risk emergency routing to hospitals and shelters across Tamil Nadu. GeoImpathon 1.0.">
+
+  <!-- MapLibre GL JS (pinned) -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js"></script>
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="assets/css/tokens.css">
+  <link rel="stylesheet" href="assets/css/base.css">
+  <link rel="stylesheet" href="assets/css/layout.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar__brand">
+        <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 1L2 6v7l7 4 7-4V6L9 1z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <path d="M9 5v8M5 7.5l4 2.5 4-2.5" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+        Hazard Router
+      </div>
+
+      <div class="topbar__search">
+        <svg class="topbar__search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/>
+        </svg>
+        <input type="text" id="search-input" placeholder="Search a place in India" autocomplete="off" aria-label="Search location">
+        <div class="topbar__search-results" id="search-results"></div>
+      </div>
+
+      <div class="topbar__actions">
+        <button class="btn btn--small" id="btn-geolocate" title="Use my location">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="8" r="3"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/>
+          </svg>
+          Locate
+        </button>
+        <button class="btn btn--small" id="btn-methodology">Methodology</button>
+      </div>
+    </header>
+
+    <div class="main">
+      <!-- Side panel -->
+      <aside class="panel" id="panel">
+        <div class="panel__handle" aria-label="Toggle panel"></div>
+        <div class="panel__scroll">
+
+          <!-- Layers -->
+          <div class="panel__section">
+            <div class="panel__section-title">Layers</div>
+            <div id="layer-toggles"></div>
+            <div class="opacity-control" style="margin-top:var(--sp-2)">
+              <span>Opacity</span>
+              <input type="range" id="hazard-opacity" min="0" max="1" step="0.05" value="0.65">
+            </div>
+          </div>
+
+          <!-- Risk weights -->
+          <div class="panel__section">
+            <div class="panel__section-title">Risk weights (AHP)</div>
+            <div id="weight-sliders"></div>
+          </div>
+
+          <!-- Route controls -->
+          <div class="panel__section">
+            <div class="panel__section-title">Route</div>
+            <div class="dest-selector">
+              <button class="btn active" data-dest="either">Either</button>
+              <button class="btn" data-dest="hospital">Hospital</button>
+              <button class="btn" data-dest="shelter">Shelter</button>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-group__header">
+                <span class="slider-group__label">Risk aversion (λ)</span>
+                <span class="slider-group__value mono" id="lambda-val">3.0</span>
+              </div>
+              <input type="range" id="lambda-slider" min="0" max="10" step="0.5" value="3">
+            </div>
+
+            <label class="checkbox">
+              <input type="checkbox" id="avoid-very-high">
+              Avoid very-high-risk segments
+            </label>
+
+            <div id="risk-readout"></div>
+          </div>
+
+          <!-- Dashboard / Summary -->
+          <div class="panel__section">
+            <div class="panel__section-title">Summary</div>
+            <div id="dashboard-content">
+              <p class="loading-text">Loading district data</p>
+            </div>
+          </div>
+
+          <!-- Map controls -->
+          <div class="panel__section">
+            <div class="panel__section-title">Map</div>
+            <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">
+              <button class="btn btn--small active" id="btn-3d">3D</button>
+              <button class="btn btn--small" id="btn-reset-view">Reset view</button>
+            </div>
+            <div class="slider-group" style="margin-top:var(--sp-2)">
+              <div class="slider-group__header">
+                <span class="slider-group__label">Terrain exaggeration</span>
+              </div>
+              <input type="range" id="terrain-exag" min="0" max="3" step="0.1" value="1.4">
+            </div>
+          </div>
+
+          <!-- Legend -->
+          <div class="panel__section">
+            <div class="panel__section-title">Legend</div>
+            <div class="risk-legend">
+              <div class="risk-legend__bar" style="background:#16403a"></div>
+              <div class="risk-legend__bar" style="background:#2f7d5b"></div>
+              <div class="risk-legend__bar" style="background:#c8b44a"></div>
+              <div class="risk-legend__bar" style="background:#e8833a"></div>
+              <div class="risk-legend__bar" style="background:#e5484d"></div>
+            </div>
+            <div class="risk-legend__labels">
+              <span>Very low</span>
+              <span>Low</span>
+              <span>Moderate</span>
+              <span>High</span>
+              <span>Very high</span>
+            </div>
+            <div style="margin-top:var(--sp-3);font-size:11px;color:var(--text-dim)">
+              <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:4px">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#5eead4;border:1.5px solid #0a0c0b"></span>
+                Hospital
+              </div>
+              <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:4px">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#8ab4ff;border:1.5px solid #0a0c0b"></span>
+                Shelter
+              </div>
+              <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:4px">
+                <span style="display:inline-block;width:10px;height:3px;background:#7dff9b;border-radius:1px"></span>
+                Least-risk route
+              </div>
+              <div style="display:flex;align-items:center;gap:var(--sp-2)">
+                <span style="display:inline-block;width:10px;height:3px;background:#9aa7a0;border-radius:1px;border-top:1px dashed #9aa7a0"></span>
+                Shortest route
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+
+      <!-- Map -->
+      <div class="map-container">
+        <div id="map"></div>
+
+        <!-- Status bar -->
+        <div class="statusbar" id="statusbar">
+          <span class="statusbar__text"></span>
+          <div class="statusbar__progress">
+            <div class="statusbar__progress-bar"></div>
+          </div>
+        </div>
+
+        <!-- Route comparison card -->
+        <div class="route-card" id="route-card"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Methodology drawer -->
+  <div class="methodology__overlay" id="methodology-overlay"></div>
+  <div class="methodology" id="methodology-drawer">
+    <button class="btn btn--icon methodology__close" id="methodology-close" aria-label="Close methodology">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+    </button>
+    <div class="methodology__content" id="methodology-content">
+      <h2>Methodology</h2>
+      <p class="loading-text">Loading data sources and methodology</p>
+    </div>
+  </div>
+
+  <!-- App script (ES module) -->
+  <script type="module" src="assets/js/main.js"></script>
+</body>
+</html>
