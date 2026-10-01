@@ -23,7 +23,7 @@ const riskRamp = [
 export async function loadRegionRasters(regionId, basePath = 'data') {
   const metaUrl = `${basePath}/${regionId}/meta.json`;
   const hazUrl = `${basePath}/${regionId}/hazards.png`;
-  const auxUrl = `${basePath}/${regionId}/aux.png`;
+  const auxUrl = `${basePath}/${regionId}/aux_layers.png`;
 
   // Load meta
   const metaResp = await fetch(metaUrl);

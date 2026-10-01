@@ -83,7 +83,7 @@ def main():
 
     # Load the raster images
     hazards_img = Image.open(os.path.join(out_dir, "hazards.png"))
-    aux_img = Image.open(os.path.join(out_dir, "aux.png"))
+    aux_img = Image.open(os.path.join(out_dir, "aux_layers.png"))
     hazards_arr = np.array(hazards_img)
     aux_arr = np.array(aux_img)
 

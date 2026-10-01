@@ -6,9 +6,9 @@
       "name": "Tamil Nadu",
       "bbox": [76.2, 8.0, 80.4, 13.6],
       "path": "data/tamil_nadu",
-      "raster_size": [940, 1244],
+      "raster_size": [932, 1243],
       "status": "ready"
     }
   ],
-  "note": "Add new states as region packs. Each needs hazards.png, aux.png, meta.json, districts.geojson in data/<region_id>/"
+  "note": "Add new states as region packs. Each needs hazards.png, aux_layers.png, meta.json, districts.geojson in data/<region_id>/"
 }

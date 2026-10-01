@@ -584,7 +584,7 @@ def main():
     aux_rgba[:, :, 2] = 0
     aux_rgba[:, :, 3] = 255
 
-    aux_path = os.path.join(out_dir, "aux.png")
+    aux_path = os.path.join(out_dir, "aux_layers.png")
     Image.fromarray(aux_rgba, "RGBA").save(aux_path, optimize=True)
     aux_size = os.path.getsize(aux_path)
     print(f"  aux.png: {w}x{h}, {aux_size / 1024 / 1024:.1f} MB")
