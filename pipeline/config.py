@@ -26,11 +26,13 @@ REGIONS = {
 # ── Hazard factor weights (before AHP normalization) ──
 # Flood hazard sub-factors
 FLOOD_WEIGHTS = {
-    "jrc_occurrence": 0.30,
-    "sar_water_freq": 0.25,
-    "chirps_heavy_rain": 0.20,
-    "relative_elevation": 0.15,  # inverted: low rel. elev = high hazard
-    "built_water_fraction": 0.10,
+    "jrc_occurrence": 0.15,
+    "dist_to_water": 0.20,
+    "sar_flood_events": 0.20,
+    "chirps_heavy_rain": 0.10,
+    "relative_elevation": 0.10,
+    "absolute_elevation": 0.15,
+    "urban_drainage_stress": 0.10,
 }
 
 # Landslide hazard sub-factors

@@ -1,5 +1,11 @@
 /**
- * graph.js – Build road graph from OSM ways, spatial index, snapping.
+ * graph.js – Build road graph from OSM ways, spatial index, node snapping.
+ *
+ * BUG 1 FIXES:
+ *  - Node key uses toFixed(6) so adjacent way nodes share the same key (graph connectivity).
+ *  - Facility snap radius: 1 km (was 500 m).
+ *  - One-way handling: if ignoreOneway=true, all edges are bidirectional (retry path).
+ *  - Exports buildGraphIgnoreOneway for oneway-ignore retry.
  */
 
 import { haversine } from './utils.js';
@@ -7,196 +13,170 @@ import { sampleAt, compositeRisk } from './hazard-raster.js';
 
 /**
  * Build a directed graph from OSM ways.
- * Nodes keyed by "lat,lon" (6 decimals).
- * Returns { nodes: Map, edges: [], nodeIndex: SpatialIndex }
+ * @param {object} osmData - { ways, hospitals, shelters }
+ * @param {object} weights - { flood, landslide, slope, exposure }
+ * @param {boolean} [ignoreOneway=false] - treat all roads as bidirectional
  */
-export function buildGraph(osmData, weights) {
-  const nodes = new Map(); // key -> { lat, lon, edges: [] }
+export function buildGraph(osmData, weights, ignoreOneway = false) {
+  const nodes = new Map(); // key → node
   const edges = [];
 
   function nodeKey(lat, lon) {
     return `${lat.toFixed(6)},${lon.toFixed(6)}`;
   }
 
-  function getOrCreateNode(lat, lon) {
-    const key = nodeKey(lat, lon);
-    if (!nodes.has(key)) {
-      nodes.set(key, { lat, lon, key, edges: [], facilityType: null, facilityName: null });
+  function getOrCreate(lat, lon) {
+    const k = nodeKey(lat, lon);
+    if (!nodes.has(k)) {
+      nodes.set(k, { lat, lon, key: k, edges: [], facilityType: null, facilityName: null });
     }
-    return nodes.get(key);
+    return nodes.get(k);
   }
 
-  // Add road edges
   for (const way of osmData.ways) {
     const coords = way.coords;
-    const isOneway = way.oneway === 'yes' || way.oneway === '1' || way.oneway === 'true';
-    const isReverse = way.oneway === '-1';
+    if (!coords || coords.length < 2) continue;
+
+    const isOneway  = !ignoreOneway && (way.oneway === 'yes' || way.oneway === '1' || way.oneway === 'true');
+    const isReverse = !ignoreOneway && way.oneway === '-1';
 
     for (let i = 0; i < coords.length - 1; i++) {
       const [lat1, lon1] = coords[i];
       const [lat2, lon2] = coords[i + 1];
-      const n1 = getOrCreateNode(lat1, lon1);
-      const n2 = getOrCreateNode(lat2, lon2);
+
+      if (!isFinite(lat1) || !isFinite(lon1) || !isFinite(lat2) || !isFinite(lon2)) continue;
+
+      const n1 = getOrCreate(lat1, lon1);
+      const n2 = getOrCreate(lat2, lon2);
 
       const dist = haversine(lat1, lon1, lat2, lon2);
-      if (dist < 0.5) continue; // Skip near-zero segments
+      if (dist < 0.5) continue; // sub-meter, skip
 
-      // Sample risk along the segment
       const risk = sampleSegmentRisk(lat1, lon1, lat2, lon2, weights, dist);
 
-      const edge = {
-        from: n1.key,
-        to: n2.key,
-        dist,
-        risk,
-        highway: way.highway,
-        name: way.name,
-      };
+      const fwd = { from: n1.key, to: n2.key, dist, risk, highway: way.highway, name: way.name };
+      const rev = { from: n2.key, to: n1.key, dist, risk, highway: way.highway, name: way.name };
 
       if (isReverse) {
-        // Reverse oneway: only n2 -> n1
-        const revEdge = { ...edge, from: n2.key, to: n1.key };
-        edges.push(revEdge);
-        n2.edges.push(revEdge);
+        edges.push(rev); n2.edges.push(rev);
       } else if (isOneway) {
-        // Forward oneway: only n1 -> n2
-        edges.push(edge);
-        n1.edges.push(edge);
+        edges.push(fwd); n1.edges.push(fwd);
       } else {
-        // Bidirectional
-        edges.push(edge);
-        n1.edges.push(edge);
-        const revEdge = { ...edge, from: n2.key, to: n1.key };
-        edges.push(revEdge);
-        n2.edges.push(revEdge);
+        edges.push(fwd); n1.edges.push(fwd);
+        edges.push(rev); n2.edges.push(rev);
       }
     }
   }
 
-  // Add facility nodes (snap to nearest road node)
+  // Build spatial index before facility snapping
   const nodeIndex = buildSpatialIndex(nodes);
 
+  // Snap hospitals to nearest road node (within 1 km)
   for (const h of osmData.hospitals || []) {
-    const nearest = findNearest(nodeIndex, nodes, h.lat, h.lon, 500);
-    if (nearest) {
-      nearest.facilityType = 'hospital';
-      nearest.facilityName = h.name;
+    const snap = findNearest(nodeIndex, nodes, h.lat, h.lon, 1000);
+    if (snap) {
+      snap.facilityType = 'hospital';
+      snap.facilityName = h.name;
     } else {
-      // Create standalone node
-      const n = getOrCreateNode(h.lat, h.lon);
+      const n = getOrCreate(h.lat, h.lon);
       n.facilityType = 'hospital';
       n.facilityName = h.name;
     }
   }
 
+  // Snap shelters (within 1 km), don't overwrite existing hospital
   for (const s of osmData.shelters || []) {
-    const nearest = findNearest(nodeIndex, nodes, s.lat, s.lon, 500);
-    if (nearest) {
-      if (!nearest.facilityType) {
-        nearest.facilityType = 'shelter';
-        nearest.facilityName = s.name;
+    const snap = findNearest(nodeIndex, nodes, s.lat, s.lon, 1000);
+    if (snap) {
+      if (!snap.facilityType) {
+        snap.facilityType = 'shelter';
+        snap.facilityName = s.name;
       }
     } else {
-      const n = getOrCreateNode(s.lat, s.lon);
+      const n = getOrCreate(s.lat, s.lon);
       n.facilityType = 'shelter';
       n.facilityName = s.name;
     }
   }
 
-  // Rebuild spatial index with any new facility nodes
   const finalIndex = buildSpatialIndex(nodes);
+
+  const debug = window.__osm_debug || {};
+  Object.assign(debug, { nodes: nodes.size, edges: edges.length });
+  window.__osm_debug = debug;
+  console.log(`[Graph] ${nodes.size} nodes, ${edges.length} edges, ignoreOneway=${ignoreOneway}`);
 
   return { nodes, edges, nodeIndex: finalIndex };
 }
 
+/** Convenience: build with all edges bidirectional */
+export function buildGraphIgnoreOneway(osmData, weights) {
+  return buildGraph(osmData, weights, true);
+}
+
 /**
- * Sample hazard risk along a road segment.
- * For segments > 200m, sample intermediate points.
+ * Sample risk along a segment (up to 5 samples).
  */
 function sampleSegmentRisk(lat1, lon1, lat2, lon2, weights, dist) {
-  const numSamples = Math.max(1, Math.ceil(dist / 200));
-  let totalRisk = 0;
-  let validSamples = 0;
-
-  for (let i = 0; i <= numSamples; i++) {
-    const t = numSamples > 0 ? i / numSamples : 0.5;
+  const n = Math.max(1, Math.min(5, Math.ceil(dist / 300)));
+  let total = 0, valid = 0;
+  for (let i = 0; i <= n; i++) {
+    const t   = i / n;
     const lat = lat1 + (lat2 - lat1) * t;
     const lon = lon1 + (lon2 - lon1) * t;
-    const sample = sampleAt(lat, lon);
-    if (sample && sample.landMask) {
-      const r = compositeRisk(sample, weights);
-      if (r !== null) {
-        totalRisk += r;
-        validSamples++;
-      }
+    const s   = sampleAt(lat, lon);
+    if (s && s.landMask) {
+      const r = compositeRisk(s, weights);
+      if (r !== null) { total += r; valid++; }
     }
   }
-
-  return validSamples > 0 ? totalRisk / validSamples : 0.3; // Default moderate risk
+  return valid > 0 ? total / valid : 0.3;
 }
 
 /**
- * Simple grid-based spatial index for fast nearest-node lookup.
- */
-function buildSpatialIndex(nodes, cellSize = 0.005) {
-  const grid = new Map();
-
-  for (const [key, node] of nodes) {
-    const gx = Math.floor(node.lon / cellSize);
-    const gy = Math.floor(node.lat / cellSize);
-    const gkey = `${gx},${gy}`;
-    if (!grid.has(gkey)) grid.set(gkey, []);
-    grid.get(gkey).push(key);
-  }
-
-  return { grid, cellSize };
-}
-
-/**
- * Find nearest node within maxDist meters.
- */
-export function findNearest(index, nodes, lat, lon, maxDist = 500) {
-  const { grid, cellSize } = index;
-  const searchRadius = Math.ceil(maxDist / 111000 / cellSize) + 1;
-  const gx = Math.floor(lon / cellSize);
-  const gy = Math.floor(lat / cellSize);
-
-  let bestNode = null;
-  let bestDist = maxDist;
-
-  for (let dy = -searchRadius; dy <= searchRadius; dy++) {
-    for (let dx = -searchRadius; dx <= searchRadius; dx++) {
-      const gkey = `${gx + dx},${gy + dy}`;
-      const keys = grid.get(gkey);
-      if (!keys) continue;
-      for (const k of keys) {
-        const n = nodes.get(k);
-        const d = haversine(lat, lon, n.lat, n.lon);
-        if (d < bestDist) {
-          bestDist = d;
-          bestNode = n;
-        }
-      }
-    }
-  }
-
-  return bestNode;
-}
-
-/**
- * Recompute all edge risks with new weights.
+ * Recompute edge risks (called when AHP weights change).
  */
 export function recomputeEdgeRisks(graph, weights) {
   for (const edge of graph.edges) {
-    const fromNode = graph.nodes.get(edge.from);
-    const toNode = graph.nodes.get(edge.to);
-    if (fromNode && toNode) {
-      edge.risk = sampleSegmentRisk(
-        fromNode.lat, fromNode.lon,
-        toNode.lat, toNode.lon,
-        weights,
-        edge.dist
-      );
+    const fn = graph.nodes.get(edge.from);
+    const tn = graph.nodes.get(edge.to);
+    if (fn && tn) {
+      edge.risk = sampleSegmentRisk(fn.lat, fn.lon, tn.lat, tn.lon, weights, edge.dist);
     }
   }
+}
+
+// ── Spatial index (grid) ─────────────────────────────────────────────────────
+function buildSpatialIndex(nodes, cellSize = 0.005) {
+  const grid = new Map();
+  for (const [, node] of nodes) {
+    const gx = Math.floor(node.lon / cellSize);
+    const gy = Math.floor(node.lat / cellSize);
+    const k  = `${gx},${gy}`;
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(node.key);
+  }
+  return { grid, cellSize };
+}
+
+export function findNearest(index, nodes, lat, lon, maxDistM = 2000) {
+  const { grid, cellSize } = index;
+  const radius = Math.ceil(maxDistM / 111000 / cellSize) + 1;
+  const gx = Math.floor(lon / cellSize);
+  const gy = Math.floor(lat / cellSize);
+  let best = null, bestD = maxDistM;
+
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const keys = grid.get(`${gx + dx},${gy + dy}`);
+      if (!keys) continue;
+      for (const k of keys) {
+        const n = nodes.get(k);
+        if (!n) continue;
+        const d = haversine(lat, lon, n.lat, n.lon);
+        if (d < bestD) { bestD = d; best = n; }
+      }
+    }
+  }
+  return best;
 }

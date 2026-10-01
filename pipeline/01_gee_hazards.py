@@ -102,67 +102,62 @@ def compute_flood_hazard(region, boundary, bbox_geom):
     jrc_occurrence = jrc.select("occurrence").divide(100).clamp(0, 1)
     print("    - JRC surface water occurrence")
 
-    # 2. Sentinel-1 VV monsoon water frequency
+    # 2. Distance to coast and water bodies
+    water_mask = jrc.select("occurrence").gt(80)
+    # fastDistanceTransform is in pixels, approx 30m each. 333 pixels ≈ 10km
+    dist_water_px = water_mask.fastDistanceTransform(333).sqrt()
+    dist_water_m = dist_water_px.multiply(30)
+    dist_factor = ee.Image.constant(10000).subtract(dist_water_m).clamp(0, 10000).divide(10000)
+    print("    - Distance to coast and water bodies")
+
+    # 3. Sentinel-1 flood-event water extent (major monsoon floods)
     s1_col = ee.ImageCollection(GEE_COLLECTIONS["sentinel1"]) \
         .filterBounds(bbox_geom) \
         .filter(ee.Filter.eq("instrumentMode", "IW")) \
         .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV")) \
         .select("VV")
 
-    water_images = []
-    for year in DATE_RANGES["sentinel1_monsoon"]["years"]:
-        for season in DATE_RANGES["sentinel1_monsoon"]["seasons"]:
-            for month in season["months"]:
-                start = f"{year}-{month:02d}-01"
-                if month == 12:
-                    end = f"{year + 1}-01-01"
-                else:
-                    end = f"{year}-{month + 1:02d}-01"
-                monthly = s1_col.filterDate(start, end)
-                # Simple threshold: VV < -15 dB indicates water
-                water = monthly.mean().lt(-15).unmask(0)
-                water_images.append(water)
+    # Known flood periods
+    f15 = s1_col.filterDate("2015-11-15", "2015-12-15").min().lt(-15).unmask(0)
+    f21 = s1_col.filterDate("2021-11-01", "2021-11-30").min().lt(-15).unmask(0)
+    f23 = s1_col.filterDate("2023-12-01", "2023-12-15").min().lt(-15).unmask(0)
+    sar_flood_events = f15.Or(f21).Or(f23)
+    print("    - Sentinel-1 major flood events (2015, 2021, 2023)")
 
-    if water_images:
-        sar_water_freq = ee.ImageCollection(water_images).mean().clamp(0, 1)
-    else:
-        sar_water_freq = ee.Image.constant(0)
-    print("    - Sentinel-1 monsoon water frequency")
-
-    # 3. CHIRPS 95th percentile daily rainfall
+    # 4. CHIRPS 95th percentile daily rainfall
     chirps = ee.ImageCollection(GEE_COLLECTIONS["chirps_daily"]) \
         .filterDate(DATE_RANGES["chirps"]["start"], DATE_RANGES["chirps"]["end"]) \
         .filterBounds(bbox_geom)
     chirps_p95 = chirps.reduce(ee.Reducer.percentile([95])).rename("chirps_p95")
     print("    - CHIRPS 95th percentile rainfall")
 
-    # 4. Relative elevation (elevation - local minimum within 2km)
+    # 5. Absolute and Relative elevation
     srtm = ee.Image(GEE_COLLECTIONS["srtm"]).select("elevation")
+    # Low absolute elevation (<10m high hazard, decays to 0 at 60m)
+    abs_elev_inv = ee.Image.constant(60).subtract(srtm.clamp(0, 60)).divide(60).clamp(0, 1)
+    
     local_min = srtm.reduceNeighborhood(
         reducer=ee.Reducer.min(),
         kernel=ee.Kernel.circle(radius=2000, units="meters")
     )
     rel_elev = srtm.subtract(local_min).clamp(0, 100)
-    # Invert: low relative elevation = higher flood hazard
     rel_elev_inv = ee.Image.constant(100).subtract(rel_elev).divide(100).clamp(0, 1)
-    print("    - Relative elevation (inverted)")
+    print("    - Absolute and relative elevation")
 
-    # 5. ESA WorldCover built-up/water fraction
+    # 6. ESA WorldCover built-up area
     wc = ee.ImageCollection(GEE_COLLECTIONS["esa_worldcover"]).first()
-    # Built-up (50) or water (80)
-    built_water = wc.eq(50).Or(wc.eq(80)).rename("built_water")
-    built_water_frac = built_water.reduceNeighborhood(
-        reducer=ee.Reducer.mean(),
-        kernel=ee.Kernel.circle(radius=1000, units="meters")
-    ).clamp(0, 1)
-    print("    - ESA WorldCover built-up/water fraction")
+    built_up = wc.eq(50)
+    urban_drainage_stress = built_up.multiply(abs_elev_inv)
+    print("    - Urban drainage stress")
 
     # Combine with weights
     flood = jrc_occurrence.multiply(FLOOD_WEIGHTS["jrc_occurrence"]) \
-        .add(sar_water_freq.multiply(FLOOD_WEIGHTS["sar_water_freq"])) \
+        .add(dist_factor.multiply(FLOOD_WEIGHTS["dist_to_water"])) \
+        .add(sar_flood_events.multiply(FLOOD_WEIGHTS["sar_flood_events"])) \
         .add(chirps_p95.divide(200).clamp(0, 1).multiply(FLOOD_WEIGHTS["chirps_heavy_rain"])) \
         .add(rel_elev_inv.multiply(FLOOD_WEIGHTS["relative_elevation"])) \
-        .add(built_water_frac.multiply(FLOOD_WEIGHTS["built_water_fraction"]))
+        .add(abs_elev_inv.multiply(FLOOD_WEIGHTS["absolute_elevation"])) \
+        .add(urban_drainage_stress.multiply(FLOOD_WEIGHTS["urban_drainage_stress"]))
 
     return flood.rename("flood_hazard")
 
@@ -463,19 +458,24 @@ def download_multiband(image, region_cfg, band_names, description="layer"):
     return results
 
 
-def normalize_array(arr, p_low=2, p_high=98):
+def normalize_array(arr, p_low=2, p_high=98, is_flood=False):
     """Min-max normalize with percentile clipping. Returns normalized array and (min, max)."""
     valid = arr[~np.isnan(arr)]
     if len(valid) == 0:
         return np.zeros_like(arr), (0, 1)
-    vmin = np.percentile(valid, p_low)
-    vmax = np.percentile(valid, p_high)
+    
+    if is_flood:
+        vmin = 0.0
+        vmax = max(0.5, float(np.percentile(valid, 99.5))) # preserve high peaks on the coast
+    else:
+        vmin = np.percentile(valid, p_low)
+        vmax = np.percentile(valid, p_high)
+        
     if vmax <= vmin:
         vmax = vmin + 1
     normalized = np.clip((arr - vmin) / (vmax - vmin), 0, 1)
     normalized = np.where(np.isnan(arr), 0, normalized)
     return normalized, (float(vmin), float(vmax))
-
 
 def main():
     parser = argparse.ArgumentParser(description="Download hazard rasters from GEE")
@@ -543,7 +543,7 @@ def main():
 
     # Normalize
     print("\nStep 7: Normalize layers")
-    flood_norm, flood_range = normalize_array(flood_arr)
+    flood_norm, flood_range = normalize_array(flood_arr, is_flood=True)
     landslide_norm, landslide_range = normalize_array(landslide_arr)
     slope_norm, slope_range = normalize_array(slope_arr)
     pop_norm, pop_range = normalize_array(pop_arr)
